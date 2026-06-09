@@ -1,0 +1,169 @@
+﻿using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Server;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using NSwag;
+using NSwag.Generation.Processors.Security;
+using System.Security.Claims;
+using WebApp.Dal;
+using WebApp.Dal.Entities;
+using WebApp.Server.Handlers;
+using WebApp.Service.Contexts;
+using WebApp.Service.Interfaces;
+using WebApp.Service.Mappings;
+using WebApp.Service.Services;
+using WebApp.Service.Utilities;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("AppDbConnection")));
+// Identity configuration
+builder.Services.AddAuthorization();
+builder.Services.AddIdentityApiEndpoints<User>().AddEntityFrameworkStores<AppDbContext>();
+builder.Services.Configure<IdentityOptions>(options =>
+{
+	options.Password.RequireDigit = false;
+	options.Password.RequiredLength = 1;
+	options.Password.RequireNonAlphanumeric = false;
+	options.Password.RequireUppercase = false;
+	options.Password.RequireLowercase = false;
+	options.Password.RequiredUniqueChars = 0;
+});
+builder.Services.AddScoped<AuthenticationStateProvider, ServerAuthenticationStateProvider>();
+builder.Services.AddScoped<IUserService, UserService>();							//User
+builder.Services.AddScoped<IWalletService, WalletService>();                        //Wallet
+builder.Services.AddScoped<ITransactionService, TransactionService>();              //Transaction
+builder.Services.AddScoped<ICategoryService, CategoryService>();                    //Category
+builder.Services.AddScoped<IFamilyService, FamilyService>();                        //Family
+builder.Services.AddScoped<ILimitService, LimitService>();                          //Limit
+builder.Services.AddScoped<ICommonService, CommonService>();                        //Common
+builder.Services.AddScoped<IAuthorizationService, AuthorizationService>();          //Authorization
+builder.Services.AddScoped<IValidationService, ValidationService>();				//Entity Validation
+//Request context provider
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IRequestContextProvider, RequestContextProvider>();
+//AutoMapper
+builder.Services.AddAutoMapper(cfg =>
+{
+	cfg.LicenseKey = builder.Configuration.GetValue<string>("AutoMapperLicenseKey");
+
+},	typeof(CategoryMappingProfile	),
+	typeof(FamilyMappingProfile		),
+	typeof(InviteMappingProfile		),
+	typeof(LimitMappingProfile		),
+	typeof(TransactionMappingProfile),
+	typeof(UserMappingProfile		),
+	typeof(WalletMappingProfile		) 
+);
+//Data protection
+builder.Services.AddDataProtection();
+//Controllers
+builder.Services.AddControllers();
+
+builder.Services.AddCors(options =>
+{
+	options.AddPolicy("Frontend", policy =>
+	{
+		policy.WithOrigins("http://localhost:5000")
+			  .AllowAnyMethod()
+			  .AllowAnyHeader()
+			  .AllowCredentials();
+	});
+});
+
+builder.Services.AddProblemDetails();
+//Exception handling
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+builder.Services.AddExceptionHandler<GeneralExceptionHandler>();
+
+builder.Services.AddOpenApiDocument(doc =>
+{
+	doc.Title = "API";
+
+	doc.AddSecurity("apikey", [], new OpenApiSecurityScheme
+	{
+		Type = OpenApiSecuritySchemeType.ApiKey,
+		Name = "api_key",
+		In = OpenApiSecurityApiKeyLocation.Header
+	});
+
+	doc.OperationProcessors.Add(new AspNetCoreOperationSecurityScopeProcessor());
+});
+
+builder.Services.AddEndpointsApiExplorer();
+
+var app = builder.Build();
+
+app.UseCors("Frontend");
+
+app.UseExceptionHandler();
+
+app.UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+
+var usersApi = app.MapGroup("/user");
+usersApi.MapIdentityApi<User>();
+
+usersApi.MapPost("login", async (
+	[FromBody] LoginRequest request,
+	SignInManager<User> signInManager,
+	UserManager<User> userManager) =>
+{
+	var user = await userManager.FindByEmailAsync(request.Email);
+	if (user == null)
+	{
+		return Results.Unauthorized();
+	}
+
+	var result = await signInManager.PasswordSignInAsync(user, request.Password, false, false);
+	if (!result.Succeeded)
+	{
+		return Results.Unauthorized();
+	}
+
+	return Results.Ok(new AccessTokenResponse { AccessToken = "token" });
+})
+.WithName("Login")
+.WithOpenApi()
+.Produces<AccessTokenResponse>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized)
+.Produces<ProblemDetails>(StatusCodes.Status500InternalServerError);
+
+usersApi.MapPost("logout", async (SignInManager<User> signInManager) =>
+{
+	await signInManager.SignOutAsync();
+	return Results.Ok();
+}).RequireAuthorization();
+
+usersApi.MapGet("current-user", (ClaimsPrincipal user) =>
+{
+	var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+	if(userId == null) { return Results.Unauthorized(); }
+	return Results.Json(new { UserId = userId });
+}).RequireAuthorization();
+
+if(app.Environment.IsDevelopment())
+{
+	app.UseOpenApi();
+	app.UseSwaggerUi(options => { options.EnableTryItOut = true; });
+	app.UseReDoc();
+
+	app.MapPost("/reset-database/{secret}", async ([FromRoute] string secret, AppDbContext db, SignInManager<User> signInManager) =>
+	{
+		if(secret != "supersecret") { return Results.Unauthorized(); }
+
+		await signInManager.SignOutAsync();
+		await db.Database.EnsureDeletedAsync();
+		await db.Categories.AddRangeAsync(DbSeedValues.DefaultCategories);
+		await db.Database.MigrateAsync();
+		return Results.Ok();
+	});
+}
+
+await app.RunAsync();

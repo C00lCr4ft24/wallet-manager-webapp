@@ -1,0 +1,54 @@
+{
+  "runtime": "Net100",
+  "documentGenerator": {
+    "fromDocument": {
+      "url": "https://localhost:5001/swagger/v1/swagger.json",
+      "output": null
+    }
+  },
+  "codeGenerators": {
+    "openApiToTypeScriptClient": {
+      "template": "Fetch",
+      "promiseType": "Promise",
+      "httpClass": "HttpClient",
+      "useAbortSignal": false,
+      "generateClientClasses": false,
+      "generateDtoTypes": true,
+      "typeScriptGeneratorSettings": {
+        "moduleName": "",
+        "namespace": "",
+        "typeScriptVersion": 5.9,
+        "template": "Fetch",
+        "promiseType": "Promise",
+        "httpClass": "Http",
+        "injectionTokenType": "OpaqueToken",
+        "dateTimeType": "Date",
+        "nullValue": "Undefined",
+        "generateClientClasses": false,
+        "generateClientInterfaces": false,
+        "generateOptionalParameters": false,
+        "wrapDtoExceptions": false,
+        "wrapResponses": false,
+        "generateResponseClasses": true,
+        "responseClass": "SwaggerResponse",
+        "useTransformOptionsMethod": false,
+        "useTransformResultMethod": false,
+        "generateDtoTypes": true,
+        "operationGenerationMode": "SingleClientFromOperationId",
+        "markOptionalProperties": true,
+        "generateCloneMethod": false,
+        "typeStyle": "Interface",
+        "generateDefaultValues": true,
+        "excludedTypeNames": ["cancellationToken"],
+        "handleReferences": false,
+        "generateConstructorInterface": false,
+        "convertConstructorInterfaceData": false,
+        "importRequiredTypes": true,
+        "useGetBaseUrlMethod": false,
+        "queryNullValue": "",
+        "output": null
+      },
+      "output": "../WebApp.Client-2/src/generated/dtos.ts"
+    }
+  }
+}

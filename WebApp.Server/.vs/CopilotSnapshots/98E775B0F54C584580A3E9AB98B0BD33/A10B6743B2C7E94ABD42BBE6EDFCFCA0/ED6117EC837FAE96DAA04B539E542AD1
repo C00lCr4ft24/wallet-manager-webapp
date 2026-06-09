@@ -1,0 +1,63 @@
+﻿@page "/login"
+@using WebApp.Dto
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<div class="login-container">
+	<h2>Login</h2>
+
+	@if (!string.IsNullOrEmpty(errorMessage))
+	{
+		<div class="alert alert-danger">@errorMessage</div>
+	}
+
+	<form @onsubmit="HandleLogin">
+		<div class="form-group">
+			<label>Email</label>
+			<input type="email" @bind="loginRequest.Email" class="form-control" required />
+		</div>
+
+		<div class="form-group">
+			<label>Password</label>
+			<input type="password" @bind="loginRequest.Password" class="form-control" required />
+		</div>
+
+		<button type="submit" class="btn btn-primary" disabled="@isLoading">
+			@(isLoading ? "Logging in..." : "Login")
+		</button>
+	</form>
+</div>
+
+@code {
+	private LoginUserDto loginRequest = new();
+	private string? errorMessage;
+	private bool isLoading = false;
+
+	private async Task HandleLogin()
+	{
+		isLoading = true;
+		errorMessage = null;
+
+		try
+		{
+			var response = await Http.PostAsJsonAsync("api/user/login?useCookies=true", loginRequest);
+
+			if (response.IsSuccessStatusCode)
+			{
+				Navigation.NavigateTo("/");
+			}
+			else
+			{
+				errorMessage = "Invalid credentials";
+			}
+		}
+		catch (Exception ex)
+		{
+			errorMessage = $"Error: {ex.Message}";
+		}
+		finally
+		{
+			isLoading = false;
+		}
+	}
+}
